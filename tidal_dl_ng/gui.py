@@ -907,7 +907,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         download_delay: bool = bool(isinstance(media, Track | Video) and self.settings.data.download_delay)
 
         for item_media in items_media:
-            result = self.download(item_media, self.dl, delay_track=download_delay, quality=quality)
+            try:
+                result = self.download(item_media, self.dl, delay_track=download_delay, quality=quality)
+            except:
+                continue
 
         return result
 

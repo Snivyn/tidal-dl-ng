@@ -4,6 +4,7 @@ import random
 import shutil
 import tempfile
 import time
+import traceback
 from collections.abc import Callable
 from uuid import uuid4
 
@@ -255,6 +256,7 @@ class Download:
             file_exists: bool = False
 
         if not file_exists:
+            self.fn_logger.debug(f"File does not exist: '{path_media_dst}'")
             # Create a temp directory and file.
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_path_dir:
                 tmp_path_file = os.path.join(tmp_path_dir, str(uuid4()))
@@ -285,6 +287,7 @@ class Download:
                     self._move_lyrics(path_media_dst, tmp_path_lyrics)
         else:
             self.fn_logger.debug(f"Download skipped, since file exists: '{path_media_dst}'")
+            return False, ""
 
         status_download: bool = not file_exists
 
@@ -416,6 +419,7 @@ class Download:
         quality_audio: Quality | None = None,
         quality_video: QualityVideo | None = None,
     ):
+        self.fn_logger.debug(f"Downloading bulk tracks...")
         # If no media instance is provided, we need to create the media instance.
         if media_id and media_type:
             media = instantiate_media(self.session, media_type, media_id)
@@ -424,6 +428,7 @@ class Download:
 
         # Create file name and path
         file_name_relative = format_path_media(file_template, media)
+        self.fn_logger.debug(f"Tracks will be output as {file_name_relative}")
 
         # Get the name of the list and check, if videos should be included.
         videos_include: bool = True
@@ -437,6 +442,7 @@ class Download:
             list_media_name = name_builder_title(media)[:30]
 
         # Get all items of the list.
+        self.fn_logger.debug(f"Getting list of tracks to get")
         items = items_results_all(media, videos_include=videos_include)
 
         # Determine where to redirect the progress information.
@@ -452,16 +458,39 @@ class Download:
         )
 
         # Iterate through list items
+
+        self.fn_logger.debug(f"Starting to download tracks...")
         while not self.progress.finished:
+            i = 0
             for media in items:
+                self.fn_logger.debug(f"Downloading playlist item {i}/{len(items)}")
                 # Download the item.
-                status_download, result_path_file = self.item(
-                    media=media,
-                    file_template=file_name_relative,
-                    quality_audio=quality_audio,
-                    quality_video=quality_video,
-                    download_delay=download_delay,
+
+                # Create file name and path
+                file_name_relative2 = format_path_media(file_name_relative, media)
+                path_media_dst = os.path.abspath(
+                    os.path.normpath(os.path.join(os.path.expanduser(self.path_base), file_name_relative2))
                 )
+                path_media_dst = path_file_sanitize(path_media_dst + ".m4a", adapt=True, uniquify=False)
+                file_exists: bool = check_file_exists(path_media_dst, extension_ignore=True)
+
+                if not file_exists:
+                    try:
+                        status_download, result_path_file = self.item(
+                            media=media,
+                            file_template=file_name_relative,
+                            quality_audio=quality_audio,
+                            quality_video=quality_video,
+                            download_delay=download_delay,
+                        )
+                        self.fn_logger.info(f"Download complete for item {i}/{len(items)}")
+                    except:
+                        self.fn_logger.error(f"Error downloading item {i}/{len(items)}")
+                        traceback.print_exc()
+
+                else:
+                    self.fn_logger.debug(f"Already downloaded this item {i}/{len(items)}")
+                i += 1
 
                 # Advance progress bar.
                 self.progress.advance(p_task1)
